@@ -90,7 +90,6 @@ DYN_LAYOUTS = [
 # --- pay as you go: unit costs and operator examples ------------------------------------
 REGISTRY_NODE_NP = 1e7           # [A] hot-window target per live registry node (section 5.1), on a small node
 REGISTRY_NODE_FULL = 1.92 * TB / MONGO_BYTES_PER_NP   # [A] an AX102 filled to its mirrored NVMe, about 190 million; not tested
-ATTACH_BYTES = PROFILES["mix"]["archive"] + PROFILES["mix"]["index"] + 150   # segment files plus Query's admin graph
 TRUST_PER_ACCOUNT = 3.1          # [M] 2,849 introductions and endorsements for 919 accounts
 TRUST_NP = 1e6 * TRUST_PER_ACCOUNT   # trust cluster at a million accounts
 CORE_NP = 1e7                    # [A] core cluster: templates, queries, views, spaces, retractions
@@ -376,9 +375,9 @@ def t_blend():
     for n in (1e5, 1e6, 1e7, 1e8):
         loaded = n * RDF4J_MARGINAL
         rows.append([num(n), size(loaded), eur(loaded / TB * PRICE_NVME_TB), dur(n / QUERY_LOAD_RATE),
-                     dur(n / QUERY_LOAD_TARGET), size(n * PROFILES["mix"]["index"])])
-    table(["Nanopublications of the type", "Loaded: RDF4J size", "NVMe per month", "Load time today",
-           "Load time at 300 per second", "Attached: segment index"], rows)
+                     dur(n / QUERY_LOAD_TARGET)])
+    table(["Nanopublications of the type", "RDF4J size", "NVMe per month", "Load time today",
+           "Load time at 300 per second"], rows)
 
 
 def t_clone():
@@ -407,7 +406,7 @@ def clone_notes():
     """Figures quoted in section 4.11 that are not in a table."""
     d = 3e9   # a dynamic part of 10% of 30 billion
     image = d * DYN_QUADS * TYPES_PER_NP * RDF4J_BYTES_PER_QUAD
-    exchange = d * (PROFILES["mix"]["archive"] + PROFILES["mix"]["index"] + 150)   # + Query's admin graph, 0.1 to 0.2 KB
+    exchange = d * (PROFILES["mix"]["archive"] + PROFILES["mix"]["index"])
     print(f"Checkpoint of {num(d)} dynamic nanopublications on object storage: "
           f"store images {size(image)}, {eur(image / TB * PRICE_OBJECT_TB)} per month; "
           f"exchange form {size(exchange)}, {eur(exchange / TB * PRICE_OBJECT_TB)} per month\n")
@@ -427,7 +426,7 @@ def t_unit():
         ("Not held, only listed: an entry in the global indexes (NVMe)", "72 B", storage(12 + 60, PRICE_NVME_TB)),
         ("Segment files on a disk server", f"{static / KB:.1f} KB", storage(static, PRICE_HDD_TB)),
         ("Segment files on object storage", f"{static / KB:.1f} KB", storage(static, PRICE_OBJECT_TB)),
-        ("Attached to a Query node: query-ready segments on NVMe", f"{ATTACH_BYTES / KB:.2f} KB", storage(ATTACH_BYTES, PRICE_NVME_TB)),
+        ("Segment files on NVMe, for SPARQL at the registry", f"{static / KB:.1f} KB", storage(static, PRICE_NVME_TB)),
         ("Live in a registry (MongoDB), node filled to its disks: 190 million", f"{MONGO_BYTES_PER_NP / KB:.0f} KB",
          PRICE_NODE_BIG * 12 / (REGISTRY_NODE_FULL / 1e6)),
         ("Live in a registry (MongoDB), node kept at 10 million", f"{MONGO_BYTES_PER_NP / KB:.0f} KB",
@@ -454,12 +453,13 @@ def operator_notes():
     """Figures quoted in section 7.3: one operator covering a billion nanopublications of one domain."""
     static = PROFILES["mix"]["archive"] + PROFILES["mix"]["index"]
     mass, small = 1e9, TRUST_NP + CORE_NP        # trust and core are loaded in full
-    out = [f"registry {eur(PRICE_NODE_SMALL + (mass + small) * static / TB * PRICE_HDD_TB)}"]
+    tb = (mass + small) * static / TB
+    out = [f"registry, segments on disk {eur(PRICE_NODE_SMALL + tb * PRICE_HDD_TB)}",
+           f"registry, segments on NVMe {eur(PRICE_NODE_SMALL + tb * PRICE_NVME_TB)}"]
     for share in (0.01, 0.10, 1.0):
-        best = min((dyn_nodes(small + mass * share, c, q, replicas=1) * price, dyn_nodes(small + mass * share, c, q, replicas=1))
-                   for _, c, q, price in DYN_LAYOUTS[1:])
-        attached = mass * (1 - share) * ATTACH_BYTES / TB * PRICE_NVME_TB
-        out.append(f"Query with {share:.0%} loaded {eur(best[0] + attached)} ({best[1]} nodes)")
+        cost, k = min((dyn_nodes(small + mass * share, c, q, replicas=1) * price, dyn_nodes(small + mass * share, c, q, replicas=1))
+                      for _, c, q, price in DYN_LAYOUTS[1:])
+        out.append(f"Query with {share:.0%} loaded {eur(cost)} ({k} nodes)")
     print("One operator covering a billion, per month: " + "; ".join(out) + "\n")
 
 

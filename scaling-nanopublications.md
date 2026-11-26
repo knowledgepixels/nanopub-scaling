@@ -13,12 +13,12 @@ The main findings:
 1. **Storage is not the problem.** One full copy of 30 billion nanopublications, compressed and indexed for lookup and SPARQL, needs about 42 TB (range 21 to 115 TB, depending on record size and on one design choice about stored serializations). Three independent copies cost about €1,300 per month to store at late-2026 list prices.
 2. **One node of the current stack carries about 10 million.** A registry accepts about 16 nanopublications per second by POST and syncs about 50 per second from a peer. A query node loads about 12 per second and stores 136 KB per nanopublication across 2,800 LMDB repositories. At 300 million, a new query node would need 289 days for its initial load, so new nodes have to start from copied checkpoints and not from a replay (4.11). Tuning one node buys an order of magnitude. The rest has to come from distributing nodes by key and type coverage, which the design provides for and production does not use yet, and from static storage.
 3. **Nanopublications are immutable and append-only, so the right storage engine is a set of sealed, immutable files.** The read-only registry mode on the `202-read-only-rete-mode` branch is the first instance of this: 102,500 nanopublications built into one 394 MB file in under eight minutes on a laptop, served by a stateless container with no database, and queryable with SPARQL in place.
-4. **The proposal is to split the network into two planes.** A *live plane* (today's Registry and Query, improved, and distributed over many nodes by key and type coverage) handles interactive publishing, trust, spaces, templates, views and whatever data is worth keeping in a mutable, fully queryable store. A large *static plane* holds sealed *segments* of one to ten million nanopublications each, replicated as files and verified by hash. The live plane seals its older content into segments continuously, the way a log-structured store compacts. The split is one of storage only, and there are levels between the two ends: a nanopublication can be live in a registry without being loaded in any Query instance, which frees publishing from Query's load rate, or it can be queried from segments without being loaded. Each Query instance loads the types it needs from static segments into its triple store, serves the rest in place under the same repository addresses, and applies retractions across both, so that views and query templates do not see the boundary. The dynamic part is sharded strictly by type. A query declares the types it reads and a quantity, lists are capped so that one excessive key cannot affect it, and the `full` repository is retired. How large the dynamic part is then becomes a target to set. Ten percent is eight nodes of today's design at 300 million. At 30 billion it is between 33 and 790 nodes, depending on how much one node can carry.
+4. **The proposal is to split the network into two planes.** A *live plane* (today's Registry and Query, improved, and distributed over many nodes by key and type coverage) handles interactive publishing, trust, spaces, templates, views and whatever data is worth keeping in a mutable, fully queryable store. A large *static plane* holds sealed *segments* of one to ten million nanopublications each, replicated as files and verified by hash. The live plane seals its older content into segments continuously, the way a log-structured store compacts. The split is one of storage only, and there are levels between the two ends: a nanopublication can be live in a registry without being loaded in any Query instance, which frees publishing from Query's load rate, or it can be queried from segments without being loaded. Query instances stay as they are and load the types they need, from live registries and from static ones alike. What is not loaded is fetched and queried at the registries, which can offer SPARQL on their segments at almost no extra cost. The dynamic part is sharded strictly by type. A query declares the types it reads and a quantity, lists are capped so that one excessive key cannot affect it, and the `full` repository is retired. How large the dynamic part is then becomes a target to set. Ten percent is eight nodes of today's design at 300 million. At 30 billion it is between 33 and 790 nodes, depending on how much one node can carry.
 5. **Trust does not grow with the data.** IDEBT runs over introductions and endorsements only. A bulk dataset of a billion records needs one key, one introduction and a handful of endorsements.
 6. **Query is the hard part.** 30 billion nanopublications are about 1.2 trillion quads, 4.5 times the largest public SPARQL endpoint today (UniProt, 266 billion triples). Interactive queries have to be routed to the slice they need (by key, by type, by segment), and cross-cutting questions answered from a compact global metadata index and from precomputed views. Arbitrary SPARQL over everything is possible only as a periodically rebuilt snapshot, which by extrapolation from QLever's published UniProt figures would need about 31 TB of NVMe and eight days to build.
-7. **Costs are per operator and per nanopublication, and small next to people.** The network has no central budget. Each operator pays for the clusters of types it covers and for the share it keeps loaded. One copy of a million nanopublications costs €0.03 to €0.41 per year as static files and €27 to €272 loaded in a query store. An operator covering one billion pays about €60 per month for a registry, about €300 for Query with 1% loaded, and about €2,500 with everything loaded. Summed over a network of 30 billion with three copies and little loaded, that is about €3,200 per month. A team to build and operate this costs between six and a hundred times more than the machines at every scale considered here. And if each record cost even a tenth of a cent to produce, 30 billion of them would cost 30 million euros, so the bulk has to come from deterministic conversion of existing structured data.
+7. **Costs are per operator and per nanopublication, and small next to people.** The network has no central budget. Each operator pays for the clusters of types it covers and for the share it keeps loaded. One copy of a million nanopublications costs €0.03 to €0.37 per year as static files and €27 to €272 loaded in a query store. An operator covering one billion pays about €60 per month for a registry, about €260 for Query with 1% loaded, and about €2,500 with everything loaded. Summed over a network of 30 billion with three copies and little loaded, that is about €3,200 per month. A team to build and operate this costs between six and a hundred times more than the machines at every scale considered here. And if each record cost even a tenth of a cent to produce, 30 billion of them would cost 30 million euros, so the bulk has to come from deterministic conversion of existing structured data.
 
-What to do first, in order: finish and merge the read-only mode on a current rete version; decide whether serialized blobs stay in the file (they are about four fifths of it); define the segment and its manifest; republish the first-generation corpus of about 10.8 million nanopublications as the first static registry; then teach Nanopub Query to serve static segments without loading them into RDF4J.
+What to do first, in order: finish and merge the read-only mode on a current rete version; decide whether serialized blobs stay in the file (they are about four fifths of it); define the segment and its manifest; republish the first-generation corpus of about 10.8 million nanopublications as the first static registry; then expose SPARQL on the segments at the static registry, and let Nanopub Query load selected types from it.
 
 ## 1. Where we are
 
@@ -219,19 +219,18 @@ Two other open networks of signed records have made this move or were built this
 
 | Level | Where it is held | Publish one at a time | Fetch by identifier, sync by list | SPARQL | One copy of a million, per year |
 |---|---|:-:|:-:|---|---:|
-| Archived | Segment files, served by a read-only registry | | yes | no | €0.03 to €0.11 |
+| Archived | Segment files, served by a read-only registry | | yes | at the registry, over the segment or dataset | €0.03 to €0.37 |
 | Live in a registry | MongoDB | yes | yes | no | €16 to €71 |
-| Attached | An archived copy, opened by a Query node as query-ready segments | | | per type and key repository, joins through one hop | €0.41 |
-| Loaded in Query | RDF4J, fed from a live registry or from segments | | | everything, with joins and text search | €27 to €272 |
+| Loaded in Query | RDF4J, fed from a live registry or from segments | | | everything Query offers, complete for the instance's coverage | €27 to €272 |
 
-The first two rows are the ways of holding a nanopublication. Every nanopublication is archived or live in at least one registry, or it does not exist in the network. The last two rows are what a Query node makes of such a copy. Each operator chooses per cluster of types (4.10) what its registry holds and what its Query instance does with it, and the choices combine freely.
+The first two rows are the ways of holding a nanopublication. Every nanopublication is archived or live in at least one registry, or it does not exist in the network. The last row is a copy that a Query instance makes for querying. Each operator chooses per cluster of types (4.10) what its registry holds and what its Query instance loads, and the choices combine freely. Archived content costs €0.03 per million and year on disk and €0.37 on NVMe, which is where it should sit if it is queried often.
 
 **Listed is not a way of holding.** A node that holds no copy of a nanopublication can still know that it exists. The global indexes (4.6) carry an entry for it, with its key, types and date and with the nodes that do hold it. This document calls that *listed*. It costs €0.02 per million and year, and it is a pointer to a copy elsewhere. If the last holder goes away, the entry points to nothing, which is why the number of holders per cluster has to be watched (4.10).
 
 Three combinations matter most.
 
 - *Live in a registry, in no Query instance.* The record is accepted at once, fetched by identifier, synced by list, retracted and superseded like any other, and counted against quotas. It cannot be queried, so Nanodash does not list it. This is the right level for a stream of records that arrive one at a time and that nobody queries yet, and for an operator who keeps a domain without offering queries over it.
-- *Live in a registry, attached by checkpoint.* The registry publishes a checkpoint per type (4.11), and a Query node attaches it. The type is queryable with a lag of one checkpoint interval and without any load.
+- *Live in a registry, queryable by checkpoint.* The registry publishes a checkpoint per type (4.11) and offers SPARQL on it, as on any segment. The content is queryable with a lag of one checkpoint interval and without any load.
 - *Archived and loaded.* A static dataset whose structural types, or a capped part of whose lists, are loaded into Query (4.9).
 
 **Publishing no longer waits for Query.** Today every Query instance loads everything its registry holds, at 12 nanopublications per second, so the slowest component sets the pace of the whole network. When a registry may hold what no Query instance loads, live publishing is bounded by the registry, at 16 per second today and several hundred with the batch path, and each Query instance loads what its policy selects. The incident log of 2026 is also almost entirely about the query layer, so content that stays out of Query stays out of that risk.
@@ -302,8 +301,8 @@ No single mutable store can hold a trillion quads and answer arbitrary SPARQL in
 | Tier | Scope | Mechanism | Cost |
 |---|---|---|---|
 | 0 | One nanopublication, one list page | Registry API on a segment | 10 to 50 ms, measured |
-| 1 | One segment | SPARQL on the file, on a server or in the client by range requests | No extra storage |
-| 2 | One key or one type | Federation over its segments, or a merged snapshot per dataset | Grows with the number of segments, unless merged |
+| 1 | One segment | SPARQL at the registry that serves the file, or in the client by range requests | No extra storage |
+| 2 | One dataset: the segments one registry holds for a publisher | Federation over those segments at the registry, or a merged snapshot per dataset. Complete for the dataset, not for a key or type. | Grows with the number of segments, unless merged |
 | 3 | Everything, metadata only | Global metadata index: identifier, key, types, creation time, signer, invalidation | 60 bytes per nanopublication |
 | 4 | A declared scope: a set of types up to a stated quantity | RDF4J on a node that carries those types, with lists capped where a type exceeds the quantity (4.10), next to the structural types and the small mutable repositories (spaces, trust) | As today, bounded at about 10 million per node |
 | 5 | Everything, arbitrary joins | A periodically rebuilt analytical snapshot with query time limits. Not what applications depend on. Anyone can build one from the segments. | About 31 TB of NVMe and 8 days to build at 30 billion (section 7.3) |
@@ -318,55 +317,62 @@ Consequences for the existing software:
 
 ### 4.9 Blending the two planes
 
-Static content has to show up in the live query services, or the static plane is an archive next to the network instead of a part of it. Three things must be the same on both sides: how a repository is addressed, the admin graph that queries rely on, and what counts as valid.
+Static content has to show up in the live query services, or the static plane is an archive next to the network instead of a part of it. The rule proposed here is simple. Query instances stay as they are: RDF4J repositories filled by loading, and complete for what the instance declares to cover. Static content enters them the way live content does, by being loaded from a registry. What is not loaded is queried where it is held, at the registry that serves the segments.
 
-**How much depends on this.** The local mirror of the published query templates has 761 of them. 391 target the `full` repository and 231 a type repository. 746 use the admin graph that Nanopub Query writes (`npa:graph`), and 660 exclude invalidated nanopublications with a graph pattern on `npx:invalidates`. A static dataset that offers none of this would be invisible to nearly everything built so far.
+**Why Query does not answer from segment files.** A segment holds a batch. It can never be assumed to hold all of a key or all of a type. A type repository answered from segments would give partial answers under an address that promises the type, and a type that is partly loaded and partly in files would need federation for every count and join. So the repository addresses of Query keep one meaning: loaded content, complete within the instance's declared coverage and caps.
 
-**A load policy per type.** Types are the natural unit. Registry lists are already kept per key and type, inside segments as well, and Query repositories are per type. Each Query instance assigns one of three modes to each type, or to each pair of key and type:
+**How much depends on Query staying as it is.** The local mirror of the published query templates has 761 of them. 391 target the `full` repository and 231 a type repository. 746 use the admin graph that Nanopub Query writes (`npa:graph`), and 660 exclude invalidated nanopublications with a graph pattern on `npx:invalidates`. All of this keeps working for static content that is loaded, because nothing in Query changes.
 
-| Mode | Where the data is | What works | Cost per nanopublication |
+**A load policy per type.** Types are the natural unit. Registry lists are already kept per key and type, inside segments as well, and Query repositories are per type. Each Query instance decides for each type, or for each pair of key and type, whether it is loaded:
+
+| | Where the data is | What works | Cost per nanopublication on this instance |
 |---|---|---|---|
-| Loaded | Copied from the segment into RDF4J, like any live nanopublication | Everything, including `full`, text search and joins without federation | About 22 KB of NVMe, and load time |
-| Attached | Stays in the segment files, which the instance holds or reads remotely | SPARQL on the type and key repositories under their usual addresses; joins with loaded data through one `SERVICE` hop | The segment itself, 0.8 KB, shared with the registry |
-| Listed | Not on this instance. It is archived or live elsewhere, and the global indexes say where | Lookup by identifier, listings by key, type and date | 60 bytes for the index entry |
+| Loaded | Copied into RDF4J from a live registry or from a static registry's segments, like any nanopublication today | Everything Query offers, including text search and joins without federation | About 22 KB of NVMe, and load time |
+| Not loaded | At the registries that hold it, live or in segments | Fetching by identifier and by list. SPARQL at the segment endpoints of those registries (below). Listings from the global indexes. | Nothing |
 
 A loaded copy is a cache of the static truth. It can be dropped and rebuilt at any time, and it does not count towards durability.
 
 **Which types are loaded.** By role first, by size second.
 
 - *Structural types, always loaded, from whichever plane they were published on:* introductions and endorsements, spaces with their roles and memberships, templates, queries, views, class and property definitions, dataset descriptions, segment manifests, retractions. They make everything else interpretable, they are what Nanodash renders pages from, and they grow with the number of communities and agents, not with the number of records.
-- *Data types an instance's users work with,* within the instance's budget. This is a choice per instance. A biodiversity node loads biodiversity types and attaches the rest.
-- *Mass record types* stay attached.
+- *Data types an instance's users work with,* within the instance's budget. This is a choice per instance. A biodiversity node loads biodiversity types and leaves the rest to others.
+- *Mass record types* are not loaded, or are loaded with capped lists (4.10).
 
-A publisher can recommend a mode per type in the manifest. The operator of the Query instance decides.
+A publisher can recommend in the manifest which types to load. The operator of the Query instance decides.
 
 **T12. Bringing a static type into one Query instance**
 
-| Nanopublications of the type | Loaded: RDF4J size | NVMe per month | Load time today | Load time at 300 per second | Attached: segment index |
-|---|---:|---:|---:|---:|---:|
-| 100 thousand | 2.2 GB | €0.05 | 2 h | 6 min | 80 MB |
-| 1 million | 22 GB | €0.48 | 23 h | 56 min | 800 MB |
-| 10 million | 219 GB | €4.82 | 10 days | 9 h | 8.0 GB |
-| 100 million | 2.2 TB | €48 | 96 days | 4 days | 80 GB |
+| Nanopublications of the type | RDF4J size | NVMe per month | Load time today | Load time at 300 per second |
+|---|---:|---:|---:|---:|
+| 100 thousand | 2.2 GB | €0.05 | 2 h | 6 min |
+| 1 million | 22 GB | €0.48 | 23 h | 56 min |
+| 10 million | 219 GB | €4.82 | 10 days | 9 h |
+| 100 million | 2.2 TB | €48 | 96 days | 4 days |
 
-A type of a million nanopublications takes a day to load today and an hour once the load path is faster. Ten million is then the practical ceiling per node. A larger type is loaded with capped lists (4.10), and the rest is attached.
+A type of a million nanopublications takes a day to load today and an hour once the load path is faster. Ten million is then the practical ceiling per node. A larger type is loaded with capped lists (4.10), and the rest is queried at the registries that hold it.
+
+**SPARQL at a segment-based registry.** The read-only registry already reads its file through a SPARQL endpoint, and the file contains the nanopublications' own graphs next to the registry metadata. Offering queries on segments is therefore mostly a matter of exposing that endpoint, with time and result limits. What such an endpoint is and is not:
+
+- *Its scope is the segments it is opened on,* as described by their manifests: one segment, or the segments of one dataset, federated or merged into one snapshot (4.8). It makes no claim about a key or a type as a whole.
+- *It needs no Query instance and no load.* A bulk dataset is queryable where it is held as soon as the file is served.
+- *It answers the state as sealed.* A retraction published later is not in the file. The registry applies the invalidation overlay (4.7) to its lookup and list answers, but SPARQL results come from the file as it is, and a client that needs current validity in a query checks against a Query instance, where retractions are always loaded.
+- *It is not a Query repository.* The admin graph that Query writes is not in the file, so existing templates do not run there unchanged. The builder could add it at 0.1 to 0.2 KB per nanopublication, which is optional and can wait for demand.
+- *A live registry offers the same on its sealed segments and checkpoints,* not on the part in MongoDB.
 
 **What works with today's code.** A Query instance follows exactly one registry, by that registry's load counter, and inherits its coverage. A registry can already restrict its coverage to a set of types and then pulls only those per-type lists from its peers, skipping ahead by checksum. So a coverage-restricted registry that has a static registry among its peers, with a Query instance behind it, should load selected static types into RDF4J without new code in Query. This has not been tried yet, and it is the cheapest way to test the blend on the first static dataset. Its limits: one policy per pair of registry and Query instance, a second copy of the loaded types in MongoDB, and the dataset's key has to be admitted by the bridge registry's coverage and quota settings.
 
-**What Query needs for the full blend.**
+**What Query needs.**
 
 1. *Several sources, a cursor per source.* A live registry is followed by its load counter, as now. A static source is followed by its manifests: the cursor is the set of segments already processed, and the counter ranges in the manifests take the place of load numbers.
-2. *Attached repositories under the existing addresses.* `/repo/type/<hash>` and `/repo/pubkey/<hash>` answer from RDF4J, from segment files, or from both when a type has members on both sides. Query already proxies every repository request, so this is where the union belongs.
-3. *Query-ready segments.* The segment builder writes the admin graph exactly as Query does: signature key and its hash, types, creation time, creator, label, introduced and embedded resources, links between nanopublications, 33 kinds of triples in all. Then the existing templates run on a segment unchanged. This adds an estimated 0.1 to 0.2 KB per nanopublication to the index.
-4. *One hop of federation.* A join between loaded and attached data goes through one `SERVICE` call. The connection pool deadlocks of August 2026 came from queries with three to seven such hops through one route.
+2. *A load policy of its own.* Per cluster and type, with list caps, and narrower than the coverage of the registries it follows. Today Query loads all that its registry has.
 
-**What happens to `full`.** Half of the published templates target `full`. With scopes declared per query, `full` is retired, except on deliberately restricted instances where it means that instance's small coverage (4.10). Each instance advertises which types it has loaded, attached or only listed, with counts and caps, so that the Router can send a query to an instance that can answer it.
+**What happens to `full`.** Half of the published templates target `full`. With scopes declared per query, `full` is retired, except on deliberately restricted instances where it means that instance's small coverage (4.10). Each instance advertises which types it has loaded, with counts and caps, so that the Router can send a query to an instance that can answer it.
 
-**Validity across the boundary.** A retraction published in Nanodash today may hit a record sealed two years ago. Retractions and new versions are therefore among the always-loaded types, wherever they were published, and their `npx:invalidates` triples sit in a small repository that every attached endpoint includes in its dataset. The usual pattern in the templates then gives the right answer for attached data as well. This is the overlay of section 4.7 in the form the queries expect.
+**Validity across the boundary.** A retraction published in Nanodash today may hit a record sealed two years ago. Retractions and new versions are therefore among the always-loaded types, wherever they were published. For loaded content this works as today: an invalidating nanopublication is on every list of the nanopublication it invalidates, so it arrives with the list, and the usual pattern in the templates gives the right answer. For content that is not loaded, the registry's overlay answers (4.7).
 
 **Loading by reference.** When a live nanopublication refers to a static one (a comment, an endorsement, a citation, a new version, membership in a collection), the Query instance fetches that one target from the registry and loads it. Query already records such links in its network graph, so the trigger exists. The loaded set then consists of the structural types plus the part of the static plane that somebody has touched. It grows with activity, not with the size of the archive.
 
-**Sealing is not unloading.** When a live registry seals old content into segments, the registry's storage moves. What a Query instance keeps loaded is decided separately by the type policy: structural types stay, a mass type keeps a recent window (today's `last30d`, bounded by count), and the rest becomes attached.
+**Sealing is not unloading.** When a live registry seals old content into segments, the registry's storage moves. What a Query instance keeps loaded is decided separately by the type policy: structural types stay, a mass type keeps a recent window (today's `last30d`, bounded by count), and the rest is unloaded and remains at the registries.
 
 ### 4.10 Distributing the dynamic part by type
 
@@ -404,7 +410,7 @@ Measured on today's typed lists (8,481 lists, 142,807 entries, median length 1):
 
 A cap of 1,000 leaves 8,464 of 8,481 lists untouched. The volume sits in a handful of lists, and the cap removes exactly that.
 
-Two details need a decision. A cut list keeps either its newest L entries, which degrades gracefully and can be fetched from the end of the list, or its first L by position. List order can differ between registries, so the rule has to name the order it uses. And the instance has to report which lists it cut, so that a result over a capped scope is never mistaken for a complete one. The rest of a cut list stays reachable as an attached repository (4.9).
+Two details need a decision. A cut list keeps either its newest L entries, which degrades gracefully and can be fetched from the end of the list, or its first L by position. List order can differ between registries, so the rule has to name the order it uses. And the instance has to report which lists it cut, so that a result over a capped scope is never mistaken for a complete one. The rest of a cut list stays reachable at the registries that hold it, by list and, where it is sealed, through the segment endpoints (4.9).
 
 **`full` is retired.** With scopes declared, no query needs a repository of everything, and none can be offered at scale. `full` remains only on deliberately restricted instances, where it means that instance's small coverage, for example a community node with a few dozen types. Of the 391 templates that target `full` today, about 181 name a fixed nanopublication type and can move to a declared scope mechanically. About 190 contain no type pattern. They look things up by identifier, by an IRI that is mentioned, or by a link between nanopublications, and they need the global indexes instead (limit 4 below). These counts come from a text search of the mirrored templates and are rough.
 
@@ -444,7 +450,7 @@ Two levers set the efficiency of a node. Today each nanopublication is stored ab
 **Where the limits are.**
 
 1. *The scope of one query has to fit one node.* That is 11, 28 or 277 million nanopublications, depending on the layout. The declared quantity is what makes this checkable before the query runs. A query over two types on different nodes can still be answered with one federated hop, at a cost.
-2. *A type larger than a node cannot be dynamic in full.* Types are not split, so such a type is loaded with capped lists and the remainder is attached. Today the largest type holds 24% of all nanopublications, and all of it is one list from one key. If the shape of the distribution holds at 30 billion, the largest type would have several billion members. This is the main price of sharding strictly by type, and the cap is what makes it acceptable.
+2. *A type larger than a node cannot be dynamic in full.* Types are not split, so such a type is loaded with capped lists and the remainder is queried at the registries that hold its segments. Today the largest type holds 24% of all nanopublications, and all of it is one list from one key. If the shape of the distribution holds at 30 billion, the largest type would have several billion members. This is the main price of sharding strictly by type, and the cap is what makes it acceptable.
 3. *Write rate into one type.* Every node that carries a type takes all writes to it. At a few hundred nanopublications per second per node, a type absorbs about 25 million a day. A bulk dataset of a billion in one type has to arrive as segments.
 4. *Questions that name no type.* Everything that mentions a given IRI, what links to a given nanopublication, the latest publications across the network, text search over everything. Type shards cannot answer these, and this is what `full`, `meta` and `text` are used for today. They need global indexes: the identifier resolver, the metadata index, and an index from terms to nanopublications with their types, on the order of a few terabytes at 30 billion. A client then asks the index which types are involved and queries those with a quantity. This index is the least developed part of the plan.
 5. *Nanopublications without a type.* 12,949 of the 102,500 in the snapshot, 13%, are on no type list. With type shards and no `full` they are out of reach of any query. Either the registry places them under a reserved type, or they are served by identifier only.
@@ -500,18 +506,18 @@ A full node of the kind section 4.10 counts on takes between eleven days and nin
 
 | | Exchange form | Store image |
 |---|---|---|
-| Content | The files of the static plane: the registry file of the read-only mode, a query-ready segment per type (4.9) | A MongoDB dump or snapshot, RDF4J repository directories |
+| Content | The files of the static plane: the registry file of the read-only mode, per type | A MongoDB dump or snapshot, RDF4J repository directories |
 | Start-up | Opened in place, or bulk-loaded | Copied and opened |
 | Valid for | Any version and any engine that reads the format | The same engine build, configuration and Query version |
 | Store defects | Not carried over | Carried over |
 | Next checkpoint | Shares everything but the list tails | A new full copy |
 | Use | The canonical checkpoint; the fallback when versions differ or the source is unknown | The normal way to bring up a node, within a fleet and between operators, taken from a node that passed the probe |
 
-A checkpoint of a dynamic part of 3 billion nanopublications takes 4.7 TB in exchange form, about €30 per month on object storage, and 27 TB as RDF4J store images, about €176 per month.
+A checkpoint of a dynamic part of 3 billion nanopublications takes 4.2 TB in exchange form, about €27 per month on object storage, and 27 TB as RDF4J store images, about €176 per month.
 
 **The unit is the type.** With shards by type, a checkpoint is one type's lists from a registry and one type's repository from Query. To carry a type on a node means to fetch its checkpoint, open it and follow the tail. This is one operation for a new node, a replacement after a failure, a rebalancing move and added read capacity. It requires that each repository records its own position. Today there is one position for the whole instance, in the admin repository. A node assembled from checkpoints of different age then restarts its stream at the lowest of its positions, and the loader's check per repository skips the rest. Per-type streams from the registry (4.10) remove that re-reading.
 
-**Clone, seal and blend are one mechanism.** A per-type checkpoint in exchange form is a query-ready segment that has not been declared final. Sealing (4.3) declares the newest checkpoint final and lets the live store drop it. Attaching (4.9) opens it without loading. Cloning opens it and continues writing behind it. One format and one builder serve all three, and the builder on the read-only branch already turns a live registry into such a file.
+**Clone and seal are one mechanism.** A per-type checkpoint in exchange form is a segment that has not been declared final. Sealing (4.3) declares the newest checkpoint final and lets the live store drop it. Cloning opens it and continues writing behind it. A registry can also offer SPARQL on it (4.9). One format and one builder serve all of these, and the builder on the read-only branch already turns a live registry into such a file.
 
 **A registry clone needs no import.** In the store planned in section 5.1, MongoDB holds the hot window and the read-only reader serves sealed files in the same process. A new registry then fetches the checkpoint files and serves them at once, and its MongoDB only takes what arrives afterwards.
 
@@ -585,8 +591,8 @@ The two months of query-layer incidents came from mutable stores, unclean shutdo
 | Routing | The Router redirects to any healthy instance | By coverage, for publishing and for repository requests |
 | Node replacement | By hand: wipe and reload | Clone from a published checkpoint per type, then follow the tail (4.11) |
 | Instance identity and position | Setup id and load counter; a copied database is an identical twin; Query keeps one position for the whole instance | Lineage: a clone gets a new setup id and states the setup id and counter it was cloned at; a position per repository in Query |
-| Query sources and coverage | One registry, one load counter, coverage inherited from that registry | Several sources (a live registry and static registries), a cursor per source, and a load policy per type: loaded, attached or listed (4.9) |
-| Query engine | RDF4J with LMDB | RDF4J for the small mutable repositories; sealed files for append-only content |
+| Query sources and coverage | One registry, one load counter, coverage inherited from that registry | Several sources (a live registry and static registries), a cursor per source, and a load policy of its own per cluster and type, with list caps (4.9) |
+| Query engine | RDF4J with LMDB | Unchanged. Query answers only from what it has loaded. |
 
 ### 5.2 Static plane
 
@@ -596,9 +602,9 @@ The two months of query-layer incidents came from mutable stores, unclean shutdo
 | Segment builder | `scripts/build-readonly.sh`, one thread | Parallel verification; Jelly source with offset index; manifest output; resumable |
 | Manifest and availability vocabulary | None | Define in the `npx:` and `npa:` namespaces; templates |
 | Mirror tool | None | Fetch by manifest, verify, sample, publish availability |
-| Query over segments | rete serves SPARQL per file and can federate files | Attached repositories in Nanopub Query under the existing `/repo/type/` and `/repo/pubkey/` addresses, with the union of loaded and attached members; routing by scope |
+| SPARQL on segments | The read-only registry reads its file through a rete SPARQL endpoint. rete can federate files. | Expose the endpoint at the registry, per segment and per dataset, with limits, and describe its scope in the manifest |
 | Checkpoints | None. Stores are rebuilt by replay. | Per-type checkpoints of live state in the segment format, from the same builder; store images between nodes on the same versions; a content checksum per repository (4.11) |
-| Query-ready segments | The registry file has registry metadata in the `npa:` namespace, but not the admin graph that Query writes | The builder also writes Query's admin graph, so that existing query templates run on a segment unchanged |
+| Query's admin graph in segments | Not in the registry file | Optional, if templates should run on segment endpoints. Not needed for the plan. |
 | Resolver, catalog, metadata index | Router redirects to a healthy instance | Build from manifests; serve from the Router |
 | Invalidation overlay | Flag set at build time only | Overlay table and its deltas; applied by registry and query readers |
 | Monitor | Per-service health | Per-segment replica counts, checksum agreement between mirrors, nodes per dynamic slice |
@@ -683,14 +689,14 @@ The four hosts of today's fleet are not priced in the admin notes. At the list p
 | Not held, only listed: an entry in the global indexes (NVMe) | 72 B | €0.02 | 63 billion |
 | Segment files on a disk server | 1.4 KB | €0.03 | 36 billion |
 | Segment files on object storage | 1.4 KB | €0.11 | 11 billion |
-| Attached to a Query node: query-ready segments on NVMe | 1.55 KB | €0.41 | 2.9 billion |
+| Segment files on NVMe, for SPARQL at the registry | 1.4 KB | €0.37 | 3.2 billion |
 | Live in a registry (MongoDB), node filled to its disks: 190 million | 10 KB | €16 | 74 million |
 | Live in a registry (MongoDB), node kept at 10 million | 10 KB | €71 | 17 million |
 | Loaded in Query. Today's layout: `full`, key and type repositories, RDF4J | 175 quads | €272 | 4.4 million |
 | Loaded in Query. Type shards, one copy per type, RDF4J | 72 quads | €112 | 11 million |
 | Loaded in Query. Type shards, one copy per type, engine at Wikidata scale | 72 quads | €27 | 45 million |
 
-One copy of a million nanopublications costs 3 to 41 cents per year as static files, €16 to €71 live in a registry and €27 to €272 loaded in a query store. Between static and loaded lies a factor of 65 to several thousand. An operator's bill is therefore set by what it keeps live and what it loads, and hardly by what it covers.
+One copy of a million nanopublications costs 3 to 37 cents per year as static files, €16 to €71 live in a registry and €27 to €272 loaded in a query store. Between static and loaded lies a factor of 70 to several thousand. An operator's bill is therefore set by what it keeps live and what it loads, and hardly by what it covers.
 
 Three qualifications apply. The prices come in steps: the smallest storage server is €84 per month and holds 47 billion nanopublications, and the smallest useful query node is €59 to €259. Below one node's worth the unit price does not apply and the step does. The two registry rows span an untested range: 10 million per node is the hot-window target, and 190 million is what fits on the disks of a larger node at an assumed 10 KB per nanopublication. And none of the rows includes people (7.7).
 
@@ -698,15 +704,15 @@ Three qualifications apply. The prices come in steps: the smallest storage serve
 
 An operator's bill follows from the unit costs and from two choices: which clusters to cover, and how much of them to keep loaded. Take one operator that covers a domain of a billion nanopublications, next to trust and core, at the prices of table T15 and with the cheaper of the two type-shard engines:
 
-- A registry that keeps and serves all of it as segments: about €60 per month.
-- Query with 1% loaded and the rest attached: about €300 per month, one node.
-- Query with 10% loaded: about €650 per month.
+- A registry that keeps and serves all of it as segments: about €60 per month on disk, and about €90 on NVMe if the segments are queried often.
+- Query with 1% loaded: about €260 per month, one node.
+- Query with 10% loaded: about €610 per month.
 - Query with everything loaded: about €2,500 per month, four nodes.
 
 Three things follow.
 
 - *Registry coverage is cheap.* Keeping several billion nanopublications as segments costs under €100 per month, so registries can cover broadly and copies should be plentiful.
-- *The loaded share is what costs.* Between 1% and everything loaded lies a factor of eight for the same coverage.
+- *The loaded share is what costs.* Between 1% and everything loaded lies a factor of ten for the same coverage.
 - *Heavy users fund big nodes.* An operator that wants a whole domain loaded pays for that choice, and nobody else does.
 
 Per operator the fixed cost is a person who runs the node, and it is larger than the hardware cost of a registry or of a lightly loaded Query node. Pay as you go therefore works for small operators only if a node runs unattended: brought up by clone (4.11), repaired by rebuild, and static wherever possible (4.15).
@@ -806,21 +812,71 @@ This is storage on three replicas at the prices above, without margin and withou
 
 ## 8. Roadmap
 
-### 8.1 Year one: to 300 million by the end of 2027
+### 8.1 Core tasks
+
+The work falls into four tracks. Sizes are rough estimates for one engineer and are not based on recorded effort: S is a few weeks, M one to three months, L three to six months.
+
+**Track A: scaling out by cluster.** This is what makes operators with partial coverage possible. It works with today's stores and does not depend on the static plane.
+
+| | Task | Starting point | Work | Size |
+|---|---|---|---|:-:|
+| A1 | Type clusters and declared coverage | Registries can restrict coverage by type and agent. All production nodes cover everything. | Cluster definitions as nanopublications. Coverage published as a service description. A coverage map. A reserved type for nanopublications without one. | M |
+| A2 | Routing by coverage | The Router redirects to any healthy instance. | Publications go to a registry that covers their types, and repository requests to a node that carries the scope. Identifier resolver. | M |
+| A3 | Query independent of one registry | Query follows one registry by its load counter and loads all it has. | A load policy per cluster, with list caps. Several registries as sources, static ones included. A position per repository. Structural types always loaded. Loading by reference. | L |
+| A4 | Declared scopes, and the end of `full` | 391 of 761 templates target `full`. | Scope declaration in templates. List caps in the loader, with cut lists reported. The registry API from a type to its keys. Migration of templates and of Nanodash. | L |
+| A5 | Clone, and nodes that run unattended | A node is wiped and reloaded by hand. A copied registry is a twin, a fresh one resets its followers. | Checkpoints per cluster. Lineage. A content checksum per repository. Automatic rebuild. Packaging that an outside operator can deploy. | L |
+
+**Track B: the cheap level.** This is what makes billions affordable to hold and gives durability.
+
+| | Task | Starting point | Work | Size |
+|---|---|---|---|:-:|
+| B1 | Static registry in production | Branch `202-read-only-rete-mode`: builder, validator, reader, parity tests, on rete 0.5. | Current rete. Decision on blobs. Segment and manifest specification. Many segments in one process. Parallel builder. | L |
+| B2 | Sealing | MongoDB holds everything. | A registry that serves its live store and its segments in one process, seals old content, and drops it once enough holders exist. | L |
+| B3 | SPARQL on segments at the registry | The read-only registry already reads its file through a SPARQL endpoint. | Expose it per segment and per dataset, with time and result limits. Scope described in the manifest. Federation over a dataset's segments, or a merged snapshot. | M |
+| B4 | Mirrors and their monitoring | Monitor reports health per service. | Mirror tool. Availability statements. Holders per segment and per cluster. | M |
+
+**Track C: rate and record format.**
+
+| | Task | Starting point | Work | Size |
+|---|---|---|---|:-:|
+| C1 | Registry publish path | 16 per second through one ordered queue. Branches for batched writes exist. | Batch endpoint taking a stream. Parallel verification. Quotas at peer sync (#221). | M |
+| C2 | Query load path | 12 per second into 2,800 repositories. | Larger transactions. Shared repositories for small types. Target 300 per second. | M |
+| C3 | Ed25519 and a lean profile for bulk data | RSA-2048 only. | Support in nanopub-java, Registry and Query. Has to be in place before the first large dataset is signed. | M |
+
+**Track D: finding things without `full`.**
+
+| | Task | Starting point | Work | Size |
+|---|---|---|---|:-:|
+| D1 | Metadata index and invalidation overlay | Query's `meta` repository, complete on every node. | Indexes fed from the registries, served next to the Router. | M |
+| D2 | Index from terms to nanopublications and types | `full` and `text`. | A design first. About 190 templates depend on it. | open |
+
+Together this is on the order of three engineer-years, without the term index and without operations.
+
+**How the tracks relate.** A and B are independent and can run in parallel. If rete stalls, scaling out by cluster still happens. If clusters take longer to agree on, the static registry still makes bulk content cheap. They meet in two places: a static registry of B1 is one of the sources that Query loads from in A3, and the checkpoint of A5 is the segment of B1 before it is sealed. Query itself does not change its way of answering in any of this. The shortest path to a second operator with partial coverage is A1, A2 and A3, about eight months of work. A4 can follow later, because a node with partial coverage can keep a `full` repository over what it covers in the meantime.
+
+**What is needed besides code.**
+
+- *Decisions that block tasks:* blobs (B1), cluster definitions (A1), the form of scope declarations and the cut rule (A4), whose checkpoints a node accepts (A5). All are in section 10.
+- *Measurements,* each a matter of days: the split of the registry file, MongoDB bytes per nanopublication and a registry at 100 million, quads per RDF4J node, a thousand segments in one process, and the bridge mechanism of section 4.9.
+- *Content:* the first-generation corpus as the first static dataset, then one bulk dataset with a named consumer.
+- *A second operator with partial coverage.* This is the test of the whole model, and it should happen in 2027 and not after everything else is built.
+- *Owners* for the Router, the Monitor, the coverage map and the indexes, and a process for defining clusters.
+
+### 8.2 Year one: to 300 million by the end of 2027
 
 | Quarter | Target | Work | Exit criteria |
 |---|---:|---|---|
-| 2026 Q4 to 2027 Q1 | 10 million | Merge read-only mode on current rete. Decide on blobs and measure. Segment and manifest specification. Parallel builder. Republish the first-generation corpus as the first static registry, with three mirrors. Ed25519 in nanopub-java and the registry. | A static registry of 10 million validates completely. A new mirror is serving within one hour of starting. Bytes per nanopublication measured for each layer. |
-| 2027 Q2 | 30 million | Nanopub Query with several sources and a load policy per type: structural types of static datasets loaded, mass types attached as repositories. Query-ready segments. Reference-driven loading. Registry clone with lineage. Resolver in the Router. Invalidation overlay. Registry batch publish endpoint. First new bulk dataset, chosen for its use and its license. | Nanodash views and existing query templates work unchanged on a static dataset. A retraction published in Nanodash hides a static nanopublication in query results within a minute. Any artifact code resolves through the Router. Live publishing sustains 100 per second on a test instance. |
-| 2027 Q3 | 100 million | Sealing from the live registry. Checkpoints per type, and node bring-up by clone. Mirror tool and availability statements. Monitor reports replicas per segment. Query repository consolidation. Cluster definitions. Production nodes with partial coverage, a published coverage map, routing by coverage, and a dynamic share of 10%. Second bulk dataset. | Every dynamic slice is on three nodes. A node rebuilds itself without manual steps. Hot stores stay bounded while the total grows. Every segment has at least three holders. A query node reloads its hot window in under 30 minutes. |
-| 2027 Q4 | 300 million | Global metadata index. An external operator runs a mirror. Load test at one billion with synthetic lean records. | Total infrastructure cost matches section 7 within a factor of two. The billion-record test passes on lookup, list sync and tier 1 to 3 queries. |
+| 2026 Q4 to 2027 Q1 | 10 million | B1: merge read-only mode on current rete, decide on blobs and measure, segment and manifest specification, parallel builder. Republish the first-generation corpus as the first static registry, with three mirrors. A1: cluster definitions and declared coverage. C3: Ed25519 in nanopub-java and the registry. | A static registry of 10 million validates completely. A new mirror is serving within one hour of starting. Bytes per nanopublication measured for each layer. |
+| 2027 Q2 | 30 million | A3: Nanopub Query with several sources and a load policy per cluster, structural types of static datasets loaded, reference-driven loading. B3: SPARQL on segments at the static registry. Invalidation overlay in the registry. A2: routing by coverage and the resolver in the Router. A first production node with partial coverage. Registry clone with lineage. C1: registry batch publish endpoint. First new bulk dataset, chosen for its use and its license. | Nanodash views and existing query templates work unchanged on the loaded types of a static dataset. The dataset as a whole answers SPARQL at its registry. A retraction published in Nanodash hides a loaded static nanopublication in query results within a minute. Any artifact code resolves through the Router. One production node runs with partial coverage, and the Router sends it only what it covers. Live publishing sustains 100 per second on a test instance. |
+| 2027 Q3 | 100 million | B2: sealing from the live registry. A5: checkpoints per cluster, and node bring-up by clone. B4: mirror tool, availability statements, holders per segment and cluster in the Monitor. C2: Query load path and repository consolidation. A4 begins: scope declarations and list caps. A second operator with partial coverage. Second bulk dataset. | Every cluster has at least two holders, and the Monitor shows the count. A node rebuilds itself without manual steps. Hot stores stay bounded while the total grows. Every segment has at least three holders. A query node reloads its hot window in under 30 minutes. |
+| 2027 Q4 | 300 million | D1: global metadata index, fed from the registries. D2: design of the term index. An external operator runs a mirror. Load test at one billion with synthetic lean records. | Total infrastructure cost matches section 7 within a factor of two. The billion-record test passes on lookup, list sync and tier 1 to 3 queries. |
 
-### 8.2 Years two and three: to 30 billion by the end of 2029
+### 8.3 Years two and three: to 30 billion by the end of 2029
 
 - **2028, to 3 billion.** Shard nodes that store each nanopublication once. Measured quads per node, and from that the dynamic share for 2029. Templates migrated from `full` to declared scopes. Index from terms to nanopublications and types. Continuous sealing with small recent segments and background merging, for agent-rate publishing at 1,000 per second per registry. Merged query snapshots per dataset. Term-to-segment index. Partial-coverage mirrors as the normal case, with five to ten independent operators. A published price for bulk hosting.
 - **2029, to 30 billion.** Thirty thousand segments. Catalog and resolver at full size. Segment-level deletion procedure exercised. Query routing by scope enforced for public endpoints, with tier 5 left to those who build it. Governance for the mirror network: who may publish manifests that mirrors accept by default, and how disputes over removals are settled.
 
-### 8.3 Beyond
+### 8.4 Beyond
 
 At 100 billion a replica is 140 TB and at a trillion 1.4 PB. Nothing in the design changes at these sizes. What changes is that a full replica becomes an institutional commitment, so the network consists of partial mirrors, and the replica count per segment becomes the central health metric. The global metadata index (6 TB at 100 billion) and the term-to-segment index become the largest single structures and would themselves be published as segments.
 
@@ -833,7 +889,7 @@ At 100 billion a replica is 140 TB and at a trillion 1.4 PB. Nothing in the desi
 | Serving thousands of segments from one process | Sets the number of serving nodes | Test with 1,000 segments of one million |
 | rete maturity | Format changes, single maintainer, 32-bit term identifiers | Section 5.3 |
 | Query across many segments | Tier 2 may be too slow without merged snapshots | Benchmark federation over 100 and 1,000 segments with real Nanodash queries |
-| Existing query templates on attached data | Nearly all templates use Query's admin graph and an invalidation pattern, and half target `full` | Run the mirrored templates against a query-ready segment of the first-generation corpus, and count which ones change their results when `full` holds only loaded content |
+| Existing query templates without `full` | Half of the templates target `full` | Count which mirrored templates change their results when `full` holds only what an instance has loaded |
 | Finding segments by term | No design yet | Prototype on the first-generation corpus |
 | Demand | Nobody may query a billion converted records | Choose bulk datasets with a named consumer |
 | Unsigned first-generation records | The second generation accepts only signed nanopublications | Decide between serving them as a marked legacy archive and re-signing with a bot key and derivation provenance, which changes their identifiers |
@@ -847,8 +903,9 @@ At 100 billion a replica is 140 TB and at a trillion 1.4 PB. Nothing in the desi
 | Clones share faults | A store image copies corruption, and copies of one image agree with each other, so the fleet checks stop detecting anything | Images only from probed nodes; one node per type built from the exchange form by another builder; checksums against the registry lists, and a content checksum per repository compared between independently built nodes |
 | Clusters with one holder or none | Copies are an outcome of who chooses to cover what, so unpopular content can end up with a single copy | Holders per cluster in the Monitor; one static copy paid by the publisher; an archive of last resort |
 | Fixed cost per operator | A node costs little, and a person to run it costs much more, which keeps small operators out | Nodes that run unattended: clone, automatic rebuild, static where possible |
-| Live in a registry, loaded nowhere | Such content is invisible to Nanodash and to every query | Global indexes fed from the registries; attach by checkpoint where queries are wanted |
+| Live in a registry, loaded nowhere | Such content is invisible to Nanodash and to every query | Global indexes fed from the registries; SPARQL on the registry's checkpoints where queries are wanted |
 | Size of a registry's live store | The cost of keeping content live without loading it rests on an untested MongoDB capacity per node | Load a registry to 100 million and measure storage, memory and list operations |
+| SPARQL on segments | rete's SPARQL coverage and speed under public load are untested, and a segment endpoint answers the state as sealed | Run real queries against the first static dataset; limits per client; document the scope and the validity caveat in the manifest |
 | Operators | Three replicas run by one organization are one failure domain | Recruit mirrors early, starting with partners who already run a registry |
 
 ## 10. Decisions needed
