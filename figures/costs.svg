@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 300" width="960" height="300" role="img" aria-label="Cost of one copy of a million nanopublications per year, by way of holding">
+<title>Cost of one copy of a million nanopublications per year, by way of holding</title>
+<style>
+svg{--surface:#ffffff;--ink:#191919;--ink2:#666666;--line:#d4d4d4;--soft:#f4f4f4;--s1:#257de0;--s1soft:#e4effc;--s2:#f47230;--s2soft:#fdeadf;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+@media (prefers-color-scheme: dark){svg{--surface:#191919;--ink:#efefef;--ink2:#9c9c9c;--line:#3d3d3d;--soft:#262626;--s1:#338ced;--s1soft:#1a3350;--s2:#e76624;--s2soft:#4b2817;}}
+.surface{fill:var(--surface)} .ink{fill:var(--ink)} .ink2{fill:var(--ink2)}
+.box{fill:var(--soft);stroke:var(--line);stroke-width:1}
+.frame{fill:none;stroke:var(--line);stroke-width:1.5}
+.reg{fill:var(--s1soft);stroke:var(--s1);stroke-width:1.5}
+.qry{fill:var(--s2soft);stroke:var(--s2);stroke-width:1.5}
+.bar{fill:var(--s1)}
+.grid{stroke:var(--line);stroke-width:1}
+.arrow{stroke:var(--ink2);stroke-width:1.5;fill:none}
+.head{fill:var(--ink2)}
+text{font-size:13px} .t{font-size:15px;font-weight:600} .h{font-size:14px;font-weight:600} .s{font-size:12px}
+</style>
+<rect class="surface" x="0" y="0" width="960" height="300" rx="8"/>
+<text class="ink t" x="40" y="34" text-anchor="start">One copy of a million nanopublications, per year</text>
+<text class="ink2 s" x="40" y="54" text-anchor="start">Hardware only, late-2026 list prices. Logarithmic scale.</text>
+<line class="grid" x1="300.0" y1="78" x2="300.0" y2="262"/>
+<text class="ink2 s" x="300.0" y="282" text-anchor="middle">€0.01</text>
+<line class="grid" x1="420.0" y1="78" x2="420.0" y2="262"/>
+<text class="ink2 s" x="420.0" y="282" text-anchor="middle">€0.10</text>
+<line class="grid" x1="540.0" y1="78" x2="540.0" y2="262"/>
+<text class="ink2 s" x="540.0" y="282" text-anchor="middle">€1</text>
+<line class="grid" x1="660.0" y1="78" x2="660.0" y2="262"/>
+<text class="ink2 s" x="660.0" y="282" text-anchor="middle">€10</text>
+<line class="grid" x1="780.0" y1="78" x2="780.0" y2="262"/>
+<text class="ink2 s" x="780.0" y="282" text-anchor="middle">€100</text>
+<line class="grid" x1="900.0" y1="78" x2="900.0" y2="262"/>
+<text class="ink2 s" x="900.0" y="282" text-anchor="middle">€1,000</text>
+<text class="ink h" x="40" y="106" text-anchor="start">Archived as segment files</text>
+<text class="ink2 s" x="40" y="124" text-anchor="start">on a disk server, or on NVMe</text>
+<rect class="bar" x="363.2" y="100" width="125.0" height="18" rx="4"/>
+<text class="ink" x="355.1607132867813" y="114" text-anchor="end">€0.03</text>
+<text class="ink" x="496.1278355057683" y="114" text-anchor="start">€0.37</text>
+<text class="ink h" x="40" y="164" text-anchor="start">Live in a registry</text>
+<text class="ink2 s" x="40" y="182" text-anchor="start">190 million per node, or 10 million</text>
+<rect class="bar" x="685.1" y="158" width="76.9" height="18" rx="4"/>
+<text class="ink" x="677.1015737710393" y="172" text-anchor="end">€16</text>
+<text class="ink" x="770.0039909227723" y="172" text-anchor="start">€71</text>
+<text class="ink h" x="40" y="222" text-anchor="start">Loaded in Query</text>
+<text class="ink2 s" x="40" y="240" text-anchor="start">larger engine, or today's layout</text>
+<rect class="bar" x="710.9" y="216" width="121.3" height="18" rx="4"/>
+<text class="ink" x="702.9105863493088" y="230" text-anchor="end">€27</text>
+<text class="ink" x="840.168459265801" y="230" text-anchor="start">€272</text>
+</svg>

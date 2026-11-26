@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 548" width="960" height="548" role="img" aria-label="How publishing, registries, segments and query services fit together">
+<title>How publishing, registries, segments and query services fit together</title>
+<style>
+svg{--surface:#ffffff;--ink:#191919;--ink2:#666666;--line:#d4d4d4;--soft:#f4f4f4;--s1:#257de0;--s1soft:#e4effc;--s2:#f47230;--s2soft:#fdeadf;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+@media (prefers-color-scheme: dark){svg{--surface:#191919;--ink:#efefef;--ink2:#9c9c9c;--line:#3d3d3d;--soft:#262626;--s1:#338ced;--s1soft:#1a3350;--s2:#e76624;--s2soft:#4b2817;}}
+.surface{fill:var(--surface)} .ink{fill:var(--ink)} .ink2{fill:var(--ink2)}
+.box{fill:var(--soft);stroke:var(--line);stroke-width:1}
+.frame{fill:none;stroke:var(--line);stroke-width:1.5}
+.reg{fill:var(--s1soft);stroke:var(--s1);stroke-width:1.5}
+.qry{fill:var(--s2soft);stroke:var(--s2);stroke-width:1.5}
+.bar{fill:var(--s1)}
+.grid{stroke:var(--line);stroke-width:1}
+.arrow{stroke:var(--ink2);stroke-width:1.5;fill:none}
+.head{fill:var(--ink2)}
+text{font-size:13px} .t{font-size:15px;font-weight:600} .h{font-size:14px;font-weight:600} .s{font-size:12px}
+</style>
+<rect class="surface" x="0" y="0" width="960" height="548" rx="8"/>
+<rect class="box" x="94" y="24" width="92" height="44" rx="6"/>
+<text class="ink" x="140" y="51" text-anchor="middle">People</text>
+<rect class="box" x="196" y="24" width="92" height="44" rx="6"/>
+<text class="ink" x="242" y="51" text-anchor="middle">Agents</text>
+<rect class="box" x="340" y="24" width="216" height="44" rx="6"/>
+<text class="ink" x="448" y="51" text-anchor="middle">Bulk conversion of datasets</text>
+<line class="arrow" x1="140" y1="68" x2="140.0" y2="159.0"/><polygon class="head" points="140,166 136.5,159.0 143.5,159.0"/>
+<line class="arrow" x1="242" y1="68" x2="242.0" y2="159.0"/><polygon class="head" points="242,166 238.5,159.0 245.5,159.0"/>
+<line class="arrow" x1="448" y1="68" x2="448.0" y2="159.0"/><polygon class="head" points="448,166 444.5,159.0 451.5,159.0"/>
+<text class="ink2 s" x="254" y="98" text-anchor="start">publish one at a time</text>
+<text class="ink2 s" x="460" y="98" text-anchor="start">publish as segments</text>
+<rect class="frame" x="40" y="116" width="540" height="216" rx="10"/>
+<text class="ink t" x="56" y="142" text-anchor="start">Registry</text>
+<rect class="reg" x="64" y="168" width="216" height="140" rx="6"/>
+<text class="ink h" x="80" y="194" text-anchor="start">Live store</text>
+<text class="ink2" x="80" y="218" text-anchor="start">MongoDB</text>
+<text class="ink2" x="80" y="235" text-anchor="start">accepts single records</text>
+<text class="ink2" x="80" y="252" text-anchor="start">trust, lists, quotas</text>
+<rect class="reg" x="340" y="168" width="216" height="140" rx="6"/>
+<text class="ink h" x="356" y="194" text-anchor="start">Segments</text>
+<text class="ink2" x="356" y="218" text-anchor="start">sealed files of 1 to 10 million</text>
+<text class="ink2" x="356" y="235" text-anchor="start">copied and verified as files</text>
+<text class="ink2" x="356" y="252" text-anchor="start">SPARQL on the file</text>
+<line class="arrow" x1="280" y1="238" x2="333.0" y2="238.0"/><polygon class="head" points="340,238 333.0,241.5 333.0,234.5"/>
+<text class="ink2 s" x="310" y="228" text-anchor="middle">seal</text>
+<rect class="frame" x="700" y="116" width="220" height="216" rx="10"/>
+<text class="ink t" x="716" y="142" text-anchor="start">Query</text>
+<rect class="qry" x="720" y="168" width="180" height="140" rx="6"/>
+<text class="ink h" x="736" y="194" text-anchor="start">Loaded repositories</text>
+<text class="ink2" x="736" y="218" text-anchor="start">RDF4J, as today</text>
+<text class="ink2" x="736" y="235" text-anchor="start">complete for the types</text>
+<text class="ink2" x="736" y="252" text-anchor="start">the node declares</text>
+<line class="arrow" x1="580" y1="238" x2="693.0" y2="238.0"/><polygon class="head" points="700,238 693.0,241.5 693.0,234.5"/>
+<text class="ink2 s" x="640" y="212" text-anchor="middle">loads</text>
+<text class="ink2 s" x="640" y="228" text-anchor="middle">selected types</text>
+<rect class="box" x="40" y="396" width="880" height="44" rx="6"/>
+<text class="ink" x="480" y="423" text-anchor="middle">Router, coverage map and global indexes: who holds what, and where to find it</text>
+<line class="arrow" x1="310" y1="396" x2="310.0" y2="339.0"/><polygon class="head" points="310,332 313.5,339.0 306.5,339.0"/>
+<text class="ink2 s" x="322" y="360" text-anchor="start">fetch, lists,</text>
+<text class="ink2 s" x="322" y="376" text-anchor="start">SPARQL per dataset</text>
+<line class="arrow" x1="810" y1="396" x2="810.0" y2="339.0"/><polygon class="head" points="810,332 813.5,339.0 806.5,339.0"/>
+<text class="ink2 s" x="798" y="360" text-anchor="end">queries over</text>
+<text class="ink2 s" x="798" y="376" text-anchor="end">declared types</text>
+<rect class="box" x="40" y="480" width="880" height="44" rx="6"/>
+<text class="ink" x="480" y="507" text-anchor="middle">Nanodash, applications, agents</text>
+<line class="arrow" x1="480" y1="480" x2="480.0" y2="447.0"/><polygon class="head" points="480,440 483.5,447.0 476.5,447.0"/>
+</svg>

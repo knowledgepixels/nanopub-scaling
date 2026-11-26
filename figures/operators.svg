@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 428" width="960" height="428" role="img" aria-label="Operators and the clusters of types they cover with a registry or a query service">
+<title>Operators and the clusters of types they cover with a registry or a query service</title>
+<style>
+svg{--surface:#ffffff;--ink:#191919;--ink2:#666666;--line:#d4d4d4;--soft:#f4f4f4;--s1:#257de0;--s1soft:#e4effc;--s2:#f47230;--s2soft:#fdeadf;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+@media (prefers-color-scheme: dark){svg{--surface:#191919;--ink:#efefef;--ink2:#9c9c9c;--line:#3d3d3d;--soft:#262626;--s1:#338ced;--s1soft:#1a3350;--s2:#e76624;--s2soft:#4b2817;}}
+.surface{fill:var(--surface)} .ink{fill:var(--ink)} .ink2{fill:var(--ink2)}
+.box{fill:var(--soft);stroke:var(--line);stroke-width:1}
+.frame{fill:none;stroke:var(--line);stroke-width:1.5}
+.reg{fill:var(--s1soft);stroke:var(--s1);stroke-width:1.5}
+.qry{fill:var(--s2soft);stroke:var(--s2);stroke-width:1.5}
+.bar{fill:var(--s1)}
+.grid{stroke:var(--line);stroke-width:1}
+.arrow{stroke:var(--ink2);stroke-width:1.5;fill:none}
+.head{fill:var(--ink2)}
+text{font-size:13px} .t{font-size:15px;font-weight:600} .h{font-size:14px;font-weight:600} .s{font-size:12px}
+</style>
+<rect class="surface" x="0" y="0" width="960" height="428" rx="8"/>
+<text class="ink2" x="40" y="53" text-anchor="start">Clusters of types</text>
+<rect class="box" x="260" y="30" width="90" height="36" rx="6"/>
+<text class="ink" x="305.0" y="53" text-anchor="middle">trust</text>
+<line class="grid" x1="355" y1="78" x2="355" y2="372"/>
+<rect class="box" x="360" y="30" width="130" height="36" rx="6"/>
+<text class="ink" x="425.0" y="53" text-anchor="middle">core</text>
+<line class="grid" x1="495" y1="78" x2="495" y2="372"/>
+<rect class="box" x="500" y="30" width="140" height="36" rx="6"/>
+<text class="ink" x="570.0" y="53" text-anchor="middle">biodiversity</text>
+<line class="grid" x1="645" y1="78" x2="645" y2="372"/>
+<rect class="box" x="650" y="30" width="140" height="36" rx="6"/>
+<text class="ink" x="720.0" y="53" text-anchor="middle">medicine</text>
+<line class="grid" x1="795" y1="78" x2="795" y2="372"/>
+<rect class="box" x="800" y="30" width="120" height="36" rx="6"/>
+<text class="ink" x="860.0" y="53" text-anchor="middle">chemistry</text>
+
+<text class="ink h" x="40" y="135" text-anchor="start">Museum of nature</text>
+<rect class="qry" x="260" y="96" width="380" height="30" rx="6"/>
+<text class="ink h" x="450.0" y="116" text-anchor="middle">Query</text>
+<rect class="reg" x="260" y="134" width="380" height="30" rx="6"/>
+<text class="ink h" x="450.0" y="154" text-anchor="middle">Registry</text>
+<text class="ink h" x="40" y="229" text-anchor="start">University hub</text>
+<rect class="qry" x="260" y="190" width="530" height="30" rx="6"/>
+<text class="ink h" x="525.0" y="210" text-anchor="middle">Query</text>
+<rect class="reg" x="260" y="228" width="530" height="30" rx="6"/>
+<text class="ink h" x="525.0" y="248" text-anchor="middle">Registry</text>
+<text class="ink h" x="40" y="304" text-anchor="start">Pharma consortium</text>
+<rect class="reg" x="260" y="284" width="230" height="30" rx="6"/>
+<text class="ink h" x="375.0" y="304" text-anchor="middle">Registry</text>
+<rect class="reg" x="650" y="284" width="270" height="30" rx="6"/>
+<text class="ink h" x="785.0" y="304" text-anchor="middle">Registry</text>
+<text class="ink h" x="40" y="360" text-anchor="start">AI startup</text>
+<rect class="qry" x="260" y="340" width="90" height="30" rx="6"/>
+<text class="ink h" x="305.0" y="360" text-anchor="middle">Query</text>
+<rect class="qry" x="650" y="340" width="140" height="30" rx="6"/>
+<text class="ink h" x="720.0" y="360" text-anchor="middle">Query</text>
+<rect class="reg" x="260" y="392" width="22" height="16" rx="4"/>
+<text class="ink2" x="290" y="405" text-anchor="start">Registry: keeps and serves the nanopublications</text>
+<rect class="qry" x="610" y="392" width="22" height="16" rx="4"/>
+<text class="ink2" x="640" y="405" text-anchor="start">Query: loads them for SPARQL</text>
+</svg>
