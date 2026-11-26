@@ -88,7 +88,8 @@ DYN_LAYOUTS = [
 ]
 
 # --- pay as you go: unit costs and operator examples ------------------------------------
-REGISTRY_NODE_NP = 1e7           # [A] nanopublications a live registry node carries after the fixes of section 5.1
+REGISTRY_NODE_NP = 1e7           # [A] hot-window target per live registry node (section 5.1), on a small node
+REGISTRY_NODE_FULL = 1.92 * TB / MONGO_BYTES_PER_NP   # [A] an AX102 filled to its mirrored NVMe, about 190 million; not tested
 ATTACH_BYTES = PROFILES["mix"]["archive"] + PROFILES["mix"]["index"] + 150   # segment files plus Query's admin graph
 TRUST_PER_ACCOUNT = 3.1          # [M] 2,849 introductions and endorsements for 919 accounts
 TRUST_NP = 1e6 * TRUST_PER_ACCOUNT   # trust cluster at a million accounts
@@ -423,10 +424,14 @@ def t_unit():
         return 1e6 * DYN_QUADS * copies / node_quads * price * 12
 
     rows_in = [
+        ("Not held, only listed: an entry in the global indexes (NVMe)", "72 B", storage(12 + 60, PRICE_NVME_TB)),
         ("Segment files on a disk server", f"{static / KB:.1f} KB", storage(static, PRICE_HDD_TB)),
         ("Segment files on object storage", f"{static / KB:.1f} KB", storage(static, PRICE_OBJECT_TB)),
         ("Attached to a Query node: query-ready segments on NVMe", f"{ATTACH_BYTES / KB:.2f} KB", storage(ATTACH_BYTES, PRICE_NVME_TB)),
-        ("Live in a registry (MongoDB)", f"{MONGO_BYTES_PER_NP / KB:.0f} KB", PRICE_NODE_SMALL * 12 / (REGISTRY_NODE_NP / 1e6)),
+        ("Live in a registry (MongoDB), node filled to its disks: 190 million", f"{MONGO_BYTES_PER_NP / KB:.0f} KB",
+         PRICE_NODE_BIG * 12 / (REGISTRY_NODE_FULL / 1e6)),
+        ("Live in a registry (MongoDB), node kept at 10 million", f"{MONGO_BYTES_PER_NP / KB:.0f} KB",
+         PRICE_NODE_SMALL * 12 / (REGISTRY_NODE_NP / 1e6)),
     ]
     for label, copies, node_quads, price in DYN_LAYOUTS:
         rows_in.append(("Loaded in Query. " + label, f"{DYN_QUADS * copies:.0f} quads", loaded(copies, node_quads, price)))
@@ -434,6 +439,15 @@ def t_unit():
     for label, per_np, year in rows_in:
         rows.append([label, per_np, f"€{year:,.2f}" if year < 10 else f"€{year:,.0f}", num(100 * 12 / year * 1e6)])
     table(["Way of holding", "Per nanopublication", "Per million and year", "Carried for €100 per month"], rows)
+
+
+def live_notes():
+    """Figures quoted in section 4.2: 3 billion nanopublications live in registries, or loaded in Query, one copy."""
+    d = 3e9 / 1e6
+    lo, hi = PRICE_NODE_BIG * 12 / (REGISTRY_NODE_FULL / 1e6), PRICE_NODE_SMALL * 12 / (REGISTRY_NODE_NP / 1e6)
+    loaded = [1e6 * DYN_QUADS * c / q * price * 12 for _, c, q, price in DYN_LAYOUTS]
+    print(f"3 billion, one copy, per month: live in registries {eur(d * lo / 12)} to {eur(d * hi / 12)}; "
+          f"loaded in Query {eur(d * min(loaded) / 12)} to {eur(d * max(loaded) / 12)}\n")
 
 
 def operator_notes():
@@ -456,4 +470,5 @@ if __name__ == "__main__":
               t_global_indexes, t_signatures, t_publisher, t_snapshot, t_blend, t_dynamic, t_clone, t_unit):
         t()
     clone_notes()
+    live_notes()
     operator_notes()

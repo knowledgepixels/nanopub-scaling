@@ -13,7 +13,7 @@ The main findings:
 1. **Storage is not the problem.** One full copy of 30 billion nanopublications, compressed and indexed for lookup and SPARQL, needs about 42 TB (range 21 to 115 TB, depending on record size and on one design choice about stored serializations). Three independent copies cost about €1,300 per month to store at late-2026 list prices.
 2. **One node of the current stack carries about 10 million.** A registry accepts about 16 nanopublications per second by POST and syncs about 50 per second from a peer. A query node loads about 12 per second and stores 136 KB per nanopublication across 2,800 LMDB repositories. At 300 million, a new query node would need 289 days for its initial load, so new nodes have to start from copied checkpoints and not from a replay (4.11). Tuning one node buys an order of magnitude. The rest has to come from distributing nodes by key and type coverage, which the design provides for and production does not use yet, and from static storage.
 3. **Nanopublications are immutable and append-only, so the right storage engine is a set of sealed, immutable files.** The read-only registry mode on the `202-read-only-rete-mode` branch is the first instance of this: 102,500 nanopublications built into one 394 MB file in under eight minutes on a laptop, served by a stateless container with no database, and queryable with SPARQL in place.
-4. **The proposal is to split the network into two planes.** A *live plane* (today's Registry and Query, improved, and distributed over many nodes by key and type coverage) handles interactive publishing, trust, spaces, templates, views and whatever data is worth keeping in a mutable, fully queryable store. A large *static plane* holds sealed *segments* of one to ten million nanopublications each, replicated as files and verified by hash. The live plane seals its older content into segments continuously, the way a log-structured store compacts. The split is one of storage only. Each Query instance loads the types it needs from static segments into its triple store, serves the rest in place under the same repository addresses, and applies retractions across both, so that views and query templates do not see the boundary. The dynamic part is sharded strictly by type. A query declares the types it reads and a quantity, lists are capped so that one excessive key cannot affect it, and the `full` repository is retired. How large the dynamic part is then becomes a target to set. Ten percent is eight nodes of today's design at 300 million. At 30 billion it is between 33 and 790 nodes, depending on how much one node can carry.
+4. **The proposal is to split the network into two planes.** A *live plane* (today's Registry and Query, improved, and distributed over many nodes by key and type coverage) handles interactive publishing, trust, spaces, templates, views and whatever data is worth keeping in a mutable, fully queryable store. A large *static plane* holds sealed *segments* of one to ten million nanopublications each, replicated as files and verified by hash. The live plane seals its older content into segments continuously, the way a log-structured store compacts. The split is one of storage only, and there are levels between the two ends: a nanopublication can be live in a registry without being loaded in any Query instance, which frees publishing from Query's load rate, or it can be queried from segments without being loaded. Each Query instance loads the types it needs from static segments into its triple store, serves the rest in place under the same repository addresses, and applies retractions across both, so that views and query templates do not see the boundary. The dynamic part is sharded strictly by type. A query declares the types it reads and a quantity, lists are capped so that one excessive key cannot affect it, and the `full` repository is retired. How large the dynamic part is then becomes a target to set. Ten percent is eight nodes of today's design at 300 million. At 30 billion it is between 33 and 790 nodes, depending on how much one node can carry.
 5. **Trust does not grow with the data.** IDEBT runs over introductions and endorsements only. A bulk dataset of a billion records needs one key, one introduction and a handful of endorsements.
 6. **Query is the hard part.** 30 billion nanopublications are about 1.2 trillion quads, 4.5 times the largest public SPARQL endpoint today (UniProt, 266 billion triples). Interactive queries have to be routed to the slice they need (by key, by type, by segment), and cross-cutting questions answered from a compact global metadata index and from precomputed views. Arbitrary SPARQL over everything is possible only as a periodically rebuilt snapshot, which by extrapolation from QLever's published UniProt figures would need about 31 TB of NVMe and eight days to build.
 7. **Costs are per operator and per nanopublication, and small next to people.** The network has no central budget. Each operator pays for the clusters of types it covers and for the share it keeps loaded. One copy of a million nanopublications costs €0.03 to €0.41 per year as static files and €27 to €272 loaded in a query store. An operator covering one billion pays about €60 per month for a registry, about €300 for Query with 1% loaded, and about €2,500 with everything loaded. Summed over a network of 30 billion with three copies and little loaded, that is about €3,200 per month. A team to build and operate this costs between six and a hundred times more than the machines at every scale considered here. And if each record cost even a tenth of a cent to produce, 30 billion of them would cost 30 million euros, so the bulk has to come from deterministic conversion of existing structured data.
@@ -191,7 +191,7 @@ Two other open networks of signed records have made this move or were built this
 
 ### 4.2 Two planes
 
-**The live plane** is today's Registry and Query. It accepts publications, runs the trust computation, and holds whatever changes: introductions, endorsements, spaces, roles, templates, queries, views, recent content. One node carries about 10 million nanopublications. The plane as a whole is distributed by type over as many nodes as the chosen dynamic part requires (4.10), and content that no longer needs a mutable store is sealed.
+**The live plane** is today's Registry and Query, which are two services with separate holdings (see the levels below). It accepts publications, runs the trust computation, and holds whatever changes: introductions, endorsements, spaces, roles, templates, queries, views, recent content. One node carries about 10 million nanopublications. The plane as a whole is distributed by type over as many nodes as the chosen dynamic part requires (4.10), and content that no longer needs a mutable store is sealed.
 
 **The static plane** is a set of *segments*. A segment is a sealed file holding a batch of nanopublications with everything a registry needs to serve them: the content, the per-key and per-type lists with their checksum chains, and the lookup structures. The registry file of the read-only mode is exactly this. A stateless registry process serves any number of segments from local disk or from object storage, and the same file answers SPARQL.
 
@@ -214,6 +214,31 @@ Two other open networks of signed records have made this move or were built this
                                                  |
                               Nanodash, agents, query clients
 ```
+
+**The planes are the two ends, and there are levels between them.** Registry and Query are separate services, and each holds a nanopublication in its own way. A nanopublication can be live in a registry without being loaded in any Query instance, and it can be queryable from segments without being loaded.
+
+| Level | Where it is held | Publish one at a time | Fetch by identifier, sync by list | SPARQL | One copy of a million, per year |
+|---|---|:-:|:-:|---|---:|
+| Archived | Segment files, served by a read-only registry | | yes | no | €0.03 to €0.11 |
+| Live in a registry | MongoDB | yes | yes | no | €16 to €71 |
+| Attached | An archived copy, opened by a Query node as query-ready segments | | | per type and key repository, joins through one hop | €0.41 |
+| Loaded in Query | RDF4J, fed from a live registry or from segments | | | everything, with joins and text search | €27 to €272 |
+
+The first two rows are the ways of holding a nanopublication. Every nanopublication is archived or live in at least one registry, or it does not exist in the network. The last two rows are what a Query node makes of such a copy. Each operator chooses per cluster of types (4.10) what its registry holds and what its Query instance does with it, and the choices combine freely.
+
+**Listed is not a way of holding.** A node that holds no copy of a nanopublication can still know that it exists. The global indexes (4.6) carry an entry for it, with its key, types and date and with the nodes that do hold it. This document calls that *listed*. It costs €0.02 per million and year, and it is a pointer to a copy elsewhere. If the last holder goes away, the entry points to nothing, which is why the number of holders per cluster has to be watched (4.10).
+
+Three combinations matter most.
+
+- *Live in a registry, in no Query instance.* The record is accepted at once, fetched by identifier, synced by list, retracted and superseded like any other, and counted against quotas. It cannot be queried, so Nanodash does not list it. This is the right level for a stream of records that arrive one at a time and that nobody queries yet, and for an operator who keeps a domain without offering queries over it.
+- *Live in a registry, attached by checkpoint.* The registry publishes a checkpoint per type (4.11), and a Query node attaches it. The type is queryable with a lag of one checkpoint interval and without any load.
+- *Archived and loaded.* A static dataset whose structural types, or a capped part of whose lists, are loaded into Query (4.9).
+
+**Publishing no longer waits for Query.** Today every Query instance loads everything its registry holds, at 12 nanopublications per second, so the slowest component sets the pace of the whole network. When a registry may hold what no Query instance loads, live publishing is bounded by the registry, at 16 per second today and several hundred with the batch path, and each Query instance loads what its policy selects. The incident log of 2026 is also almost entirely about the query layer, so content that stays out of Query stays out of that risk.
+
+**The registry's live store can then be much larger than what Query loads.** Its limit is not known. The 10 million per node used elsewhere in this document is a target for the hot window, not a ceiling of MongoDB. A node filled to its disks would hold about 190 million at the assumed 10 KB per nanopublication, which has not been tested. Three billion live in registries would cost €4,000 to €18,000 per month for one copy, against €6,600 to €68,000 loaded in Query. Live content is still 40 to 2,000 times more expensive to hold than archived content, so sealing stays the destination for everything that is no longer recent.
+
+**What this needs.** A load policy in Query that is narrower than its registry's coverage (4.9), since today Query loads all that its registry has. And global indexes that are fed from the registries, not from Query. Otherwise a nanopublication that is live in a registry and loaded nowhere can be found only by someone who already knows its identifier or its key.
 
 The split is about storage. A reader, a Nanodash view or a query template should not have to know which plane a nanopublication is on. The planes are joined in five places: trust (4.4), sealing (4.3), invalidation (4.7), routing (4.6), and selective loading of static content into the live query services (4.9).
 
@@ -303,7 +328,7 @@ Static content has to show up in the live query services, or the static plane is
 |---|---|---|---|
 | Loaded | Copied from the segment into RDF4J, like any live nanopublication | Everything, including `full`, text search and joins without federation | About 22 KB of NVMe, and load time |
 | Attached | Stays in the segment files, which the instance holds or reads remotely | SPARQL on the type and key repositories under their usual addresses; joins with loaded data through one `SERVICE` hop | The segment itself, 0.8 KB, shared with the registry |
-| Listed | Only in the global metadata index | Lookup by identifier, listings by key, type and date | 60 bytes |
+| Listed | Not on this instance. It is archived or live elsewhere, and the global indexes say where | Lookup by identifier, listings by key, type and date | 60 bytes for the index entry |
 
 A loaded copy is a cache of the static truth. It can be dropped and rebuilt at any time, and it does not count towards durability.
 
@@ -345,7 +370,7 @@ A type of a million nanopublications takes a day to load today and an hour once 
 
 ### 4.10 Distributing the dynamic part by type
 
-The dynamic part is everything held in mutable stores and loaded into Query, whether it was published live or loaded from segments. Ten million nanopublications is roughly what one node of today's design carries. It is not a bound on the network. With enough nodes the dynamic part can be any size, so its size is a target to choose, like the replica count.
+The dynamic part, as the term is used in this section, is what is loaded into Query, whether it was published live or loaded from segments. What registries hold live without any Query instance loading it is a separate and cheaper quantity (4.2). Ten million nanopublications is roughly what one node of today's design carries. It is not a bound on the network. With enough nodes the dynamic part can be any size, so its size is a target to choose, like the replica count.
 
 **Shards are types.** A node covers a set of types and holds each of them whole. Types are semantic, they are what a query is about, and the registry already organizes everything by them. Within a type the unit is the list of one key, which is how the registry stores and syncs it. A type is never split between nodes, and no node needs to hold everything.
 
@@ -655,17 +680,19 @@ The four hosts of today's fleet are not priced in the admin notes. At the list p
 
 | Way of holding | Per nanopublication | Per million and year | Carried for €100 per month |
 |---|---:|---:|---:|
+| Not held, only listed: an entry in the global indexes (NVMe) | 72 B | €0.02 | 63 billion |
 | Segment files on a disk server | 1.4 KB | €0.03 | 36 billion |
 | Segment files on object storage | 1.4 KB | €0.11 | 11 billion |
 | Attached to a Query node: query-ready segments on NVMe | 1.55 KB | €0.41 | 2.9 billion |
-| Live in a registry (MongoDB) | 10 KB | €71 | 17 million |
+| Live in a registry (MongoDB), node filled to its disks: 190 million | 10 KB | €16 | 74 million |
+| Live in a registry (MongoDB), node kept at 10 million | 10 KB | €71 | 17 million |
 | Loaded in Query. Today's layout: `full`, key and type repositories, RDF4J | 175 quads | €272 | 4.4 million |
 | Loaded in Query. Type shards, one copy per type, RDF4J | 72 quads | €112 | 11 million |
 | Loaded in Query. Type shards, one copy per type, engine at Wikidata scale | 72 quads | €27 | 45 million |
 
-One copy of a million nanopublications costs 3 to 41 cents per year as static files and €27 to €272 loaded in a query store. The factor between the two is between 65 and several thousand. An operator's bill is therefore set by what it loads and hardly by what it covers.
+One copy of a million nanopublications costs 3 to 41 cents per year as static files, €16 to €71 live in a registry and €27 to €272 loaded in a query store. Between static and loaded lies a factor of 65 to several thousand. An operator's bill is therefore set by what it keeps live and what it loads, and hardly by what it covers.
 
-Three qualifications apply. The prices come in steps: the smallest storage server is €84 per month and holds 47 billion nanopublications, and the smallest useful query node is €59 to €259. Below one node's worth the unit price does not apply and the step does. The registry row assumes that a node of today's class carries 10 million live nanopublications, which is a target and not a measurement. And none of the rows includes people (7.7).
+Three qualifications apply. The prices come in steps: the smallest storage server is €84 per month and holds 47 billion nanopublications, and the smallest useful query node is €59 to €259. Below one node's worth the unit price does not apply and the step does. The two registry rows span an untested range: 10 million per node is the hot-window target, and 190 million is what fits on the disks of a larger node at an assumed 10 KB per nanopublication. And none of the rows includes people (7.7).
 
 ### 7.3 What an operator pays
 
@@ -820,6 +847,8 @@ At 100 billion a replica is 140 TB and at a trillion 1.4 PB. Nothing in the desi
 | Clones share faults | A store image copies corruption, and copies of one image agree with each other, so the fleet checks stop detecting anything | Images only from probed nodes; one node per type built from the exchange form by another builder; checksums against the registry lists, and a content checksum per repository compared between independently built nodes |
 | Clusters with one holder or none | Copies are an outcome of who chooses to cover what, so unpopular content can end up with a single copy | Holders per cluster in the Monitor; one static copy paid by the publisher; an archive of last resort |
 | Fixed cost per operator | A node costs little, and a person to run it costs much more, which keeps small operators out | Nodes that run unattended: clone, automatic rebuild, static where possible |
+| Live in a registry, loaded nowhere | Such content is invisible to Nanodash and to every query | Global indexes fed from the registries; attach by checkpoint where queries are wanted |
+| Size of a registry's live store | The cost of keeping content live without loading it rests on an untested MongoDB capacity per node | Load a registry to 100 million and measure storage, memory and list operations |
 | Operators | Three replicas run by one organization are one failure domain | Recruit mirrors early, starting with partners who already run a registry |
 
 ## 10. Decisions needed
@@ -875,4 +904,4 @@ At 100 billion a replica is 140 TB and at a trillion 1.4 PB. Nothing in the desi
 
 Not verified, and to be checked before they are quoted: the counts for Wikidata statements, OpenCitations, Crossref, DataCite, UniProtKB, PubChem and GBIF in section 2.2; the prices of Hetzner server variants other than the base models; current personnel costs.
 
-Not measured, and assumed in the model: the size of the core cluster (10 million) in section 7.3; the 10 million live nanopublications per registry node; MongoDB bytes per nanopublication; marginal RDF4J bytes per nanopublication; the size of a registry file without blobs; all figures for the lean profile. The attempt to build the three parts of the snapshot separately for this draft did not run, so that split is an estimate from uncompressed sizes. Not tried: restoring a registry or a Query store from a copy, comparing a Query repository checksum with the registry's list checksums, whether Registry and Query assign the same types to a nanopublication, and whether Query derives identical triples for the same nanopublication on two nodes.
+Not measured, and assumed in the model: the size of the core cluster (10 million) in section 7.3; the 10 million and 190 million live nanopublications per registry node; MongoDB bytes per nanopublication; marginal RDF4J bytes per nanopublication; the size of a registry file without blobs; all figures for the lean profile. The attempt to build the three parts of the snapshot separately for this draft did not run, so that split is an estimate from uncompressed sizes. Not tried: restoring a registry or a Query store from a copy, comparing a Query repository checksum with the registry's list checksums, whether Registry and Query assign the same types to a nanopublication, and whether Query derives identical triples for the same nanopublication on two nodes.
