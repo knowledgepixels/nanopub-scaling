@@ -1,6 +1,8 @@
 # Scaling nanopublications to billions and beyond
 
-Draft 0.1, 25 November 2026. Working document: concepts, calculations, costs and a plan.
+> **Draft, work in progress.** Version 0.1, 26 November 2026. The content is incomplete and will change. The design is a proposal, and several inputs are assumptions.
+
+A working document: concepts, calculations, costs and a plan.
 
 All tables marked T1 to T15 are produced by [`projections.py`](projections.py). Each input there is tagged as measured or assumed, so a better measurement can replace an assumption and the tables follow. Sources for the measured values are in [Appendix A](#appendix-a-measurements-and-sources).
 

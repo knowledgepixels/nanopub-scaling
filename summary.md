@@ -1,5 +1,7 @@
 # Scaling nanopublications: summary
 
+> **Draft, work in progress.** 26 November 2026. The content is incomplete and will change.
+
 This is the short version of [`scaling-nanopublications.md`](scaling-nanopublications.md). It leaves out the calculations and the reasoning behind each choice. Everything here is a proposal, and most of the mechanisms have not been tried yet.
 
 ## The goal
